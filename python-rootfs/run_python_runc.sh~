@@ -1,0 +1,53 @@
+#!/bin/bash
+set -e
+
+# ----------------------------------------
+# 1️⃣ Настройки
+# ----------------------------------------
+CONTAINER_NAME="my-python-app"
+ROOTFS_DIR="./rootfs"
+APP_FILE="./app.py"
+
+# Создаём простой Python-приложение
+mkdir -p .
+cat > app.py <<'EOF'
+print("Hello from runC!")
+EOF
+
+# ----------------------------------------
+# 2️⃣ Создаём rootfs
+# ----------------------------------------
+echo "[*] Создаём rootfs..."
+rm -rf $ROOTFS_DIR
+mkdir -p $ROOTFS_DIR/app
+cp app.py $ROOTFS_DIR/app/
+
+# ----------------------------------------
+# 3️⃣ Генерируем config.json через runC spec
+# ----------------------------------------
+echo "[*] Генерируем config.json..."
+rm -f config.json
+runc spec
+
+# ----------------------------------------
+# 4️⃣ Редактируем config.json под Python
+# ----------------------------------------
+echo "[*] Настраиваем config.json..."
+# Используем jq, если есть, иначе sed
+# Меняем рабочий каталог и args
+jq '.process.cwd="/app" | .process.args=["python3","/app/app.py"] | .process.terminal=true | .process.user.uid=0 | .process.user.gid=0 | .root.path="./rootfs" | .root.readonly=false' config.json > config.tmp.json
+mv config.tmp.json config.json
+
+# ----------------------------------------
+# 5️⃣ Запускаем контейнер через runC
+# ----------------------------------------
+echo "[*] Запускаем контейнер..."
+sudo runc run $CONTAINER_NAME
+
+# ----------------------------------------
+# 6️⃣ Очистка
+# ----------------------------------------
+echo "[*] Очистка..."
+sudo runc delete $CONTAINER_NAME || true
+echo "[*] Готово!"
+
